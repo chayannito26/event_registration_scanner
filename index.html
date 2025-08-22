@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Registration Scanner</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- html5-qrcode library for QR code scanning -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <style>
+        /* Custom styles for better UX */
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        #qr-reader {
+            border: 2px dashed #cbd5e1;
+            border-radius: 0.5rem;
+            overflow: hidden;
+        }
+        /* Style for the scan region line */
+        #html5-qrcode-anchor-scan-type-change {
+            display: none;
+        }
+        .scan-log-item {
+            transition: background-color 0.3s ease;
+        }
+        .claimed-label {
+            position: relative;
+            cursor: pointer;
+        }
+        .claimed-label input {
+            display: none;
+        }
+        .claimed-label .checkbox-ui {
+            width: 44px;
+            height: 24px;
+            background-color: #e2e8f0;
+            border-radius: 9999px;
+            position: relative;
+            transition: background-color 0.2s ease;
+        }
+        .claimed-label .checkbox-ui::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background-color: white;
+            border-radius: 50%;
+            transition: transform 0.2s ease;
+        }
+        .claimed-label input:checked + .checkbox-ui {
+            background-color: #34d399; /* green-400 */
+        }
+        .claimed-label input:checked + .checkbox-ui::after {
+            transform: translateX(20px);
+        }
+        /* Simple modal for messages */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+        }
+        .modal-content {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            max-width: 90%;
+            width: 400px;
+            text-align: center;
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+    <div class="container mx-auto max-w-2xl p-4 space-y-6">
+
+        <!-- Header -->
+        <header class="text-center">
+            <h1 class="text-3xl font-bold text-slate-900">Event Registration Scanner</h1>
+            <p class="text-slate-600 mt-1">Load data, scan QR codes, and manage attendees.</p>
+        </header>
+
+        <!-- Data Management Section -->
+        <section id="data-management" class="bg-white p-4 rounded-lg shadow-sm">
+            <h2 class="text-lg font-semibold mb-3 border-b pb-2">Data Management</h2>
+            <div class="flex flex-col sm:flex-row gap-3">
+                <div class="flex-1">
+                    <label for="json-file-input" class="block text-sm font-medium text-slate-700 mb-1">Load Registration JSON</label>
+                    <input type="file" id="json-file-input" accept=".json" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
+                </div>
+                <div class="flex-1">
+                     <label for="download-json-btn" class="block text-sm font-medium text-slate-700 mb-1">Save Progress</label>
+                    <button id="download-json-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-full transition duration-300 disabled:bg-gray-400 disabled:cursor-not-allowed">
+                        <i class="fas fa-download mr-2"></i>Download Updated JSON
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- QR Scanner and Status Section -->
+        <section id="scanner-section" class="bg-white p-4 rounded-lg shadow-sm">
+            <h2 class="text-lg font-semibold mb-3 border-b pb-2">QR Code Scanner</h2>
+            <!-- This button will now trigger the scanner -->
+            <button id="start-scan-btn" class="hidden w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg transition duration-300">
+                <i class="fas fa-camera mr-2"></i>Start Scanning
+            </button>
+            <!-- The QR reader and status are now hidden until the button is clicked -->
+            <div id="qr-reader-container" class="hidden mt-4">
+                <div id="qr-reader" class="w-full mx-auto"></div>
+                <div id="scan-status" class="mt-4 text-center font-medium p-3 rounded-lg bg-slate-100 text-slate-700">
+                    <i class="fas fa-camera mr-2"></i>Awaiting registration data...
+                </div>
+            </div>
+        </section>
+
+        <!-- Attendee Information Section -->
+        <section id="attendee-info-section" class="hidden bg-white p-4 rounded-lg shadow-sm">
+            <h2 class="text-lg font-semibold mb-3 border-b pb-2">Scanned Attendee</h2>
+            <div id="attendee-details">
+                <!-- Attendee info will be populated here -->
+            </div>
+        </section>
+
+        <!-- Manual Search Section -->
+        <section id="search-section" class="bg-white p-4 rounded-lg shadow-sm">
+            <h2 class="text-lg font-semibold mb-3 border-b pb-2">Manual Lookup</h2>
+            <div class="relative">
+                <input type="text" id="search-input" placeholder="Search by name or ID..." class="w-full p-2 pl-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+            </div>
+            <div id="search-results" class="mt-2"></div>
+        </section>
+
+        <!-- Scan Log Section -->
+        <section id="scan-log-section" class="bg-white p-4 rounded-lg shadow-sm">
+            <h2 class="text-lg font-semibold mb-3 border-b pb-2">Recent Scans</h2>
+            <div id="scan-log" class="space-y-2 max-h-60 overflow-y-auto">
+                <p class="text-slate-500 text-center">No scans yet.</p>
+            </div>
+        </section>
+
+    </div>
+
+    <!-- Modal for notifications -->
+    <div id="modal" class="modal-overlay hidden">
+        <div class="modal-content shadow-lg">
+            <p id="modal-message" class="text-lg"></p>
+            <button id="modal-close-btn" class="mt-4 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-full transition duration-300">Close</button>
+        </div>
+    </div>
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- DOM Element References ---
+            const jsonFileInput = document.getElementById('json-file-input');
+            const downloadBtn = document.getElementById('download-json-btn');
+            const startScanBtn = document.getElementById('start-scan-btn');
+            const qrReaderContainer = document.getElementById('qr-reader-container');
+            const qrReaderElement = document.getElementById('qr-reader');
+            const scanStatusElement = document.getElementById('scan-status');
+            const attendeeInfoSection = document.getElementById('attendee-info-section');
+            const attendeeDetailsElement = document.getElementById('attendee-details');
+            const scanLogElement = document.getElementById('scan-log');
+            const searchInput = document.getElementById('search-input');
+            const searchResultsElement = document.getElementById('search-results');
+            const modal = document.getElementById('modal');
+            const modalMessage = document.getElementById('modal-message');
+            const modalCloseBtn = document.getElementById('modal-close-btn');
+
+            // --- App State ---
+            let registrationData = [];
+            let html5QrCode = null;
+            let lastScannedId = null;
+
+            // --- Utility Functions ---
+            function showModal(message) {
+                modalMessage.textContent = message;
+                modal.classList.remove('hidden');
+            }
+
+            function hideModal() {
+                modal.classList.add('hidden');
+            }
+
+            function saveDataToLocalStorage() {
+                if (registrationData.length > 0) {
+                    localStorage.setItem('registrationData', JSON.stringify(registrationData));
+                }
+            }
+
+            function loadDataFromLocalStorage() {
+                const savedData = localStorage.getItem('registrationData');
+                if (savedData) {
+                    registrationData = JSON.parse(savedData);
+                    console.log('Data loaded from localStorage.');
+                    enableAppFeatures();
+                }
+            }
+            
+            function updateScanStatus(text, iconClass, bgClass) {
+                scanStatusElement.innerHTML = `<i class="${iconClass} mr-2"></i>${text}`;
+                scanStatusElement.className = `mt-4 text-center font-medium p-3 rounded-lg ${bgClass} text-white transition-all duration-300`;
+            }
+
+            function displayAttendeeInfo(attendee) {
+                attendeeInfoSection.classList.remove('hidden');
+                let partsHtml = attendee.registeredParts.map(part => {
+                    const isClaimed = attendee.claimedParts.includes(part);
+                    return `
+                        <div class="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
+                            <span class="font-medium">${part}</span>
+                            <label class="claimed-label">
+                                <input type="checkbox" class="claim-checkbox" data-attendee-id="${attendee.id}" data-part="${part}" ${isClaimed ? 'checked' : ''}>
+                                <div class="checkbox-ui"></div>
+                            </label>
+                        </div>
+                    `;
+                }).join('');
+
+                attendeeDetailsElement.innerHTML = `
+                    <div class="space-y-3">
+                        <p class="text-xl font-bold">${attendee.name}</p>
+                        <p class="text-sm text-slate-500">ID: ${attendee.id}</p>
+                        <div class="space-y-2">${partsHtml}</div>
+                    </div>
+                `;
+                
+                document.querySelectorAll('.claim-checkbox').forEach(checkbox => {
+                    checkbox.addEventListener('change', handleClaimToggle);
+                });
+            }
+
+            function addToScanLog(logData, found) {
+                if (scanLogElement.querySelector('p')) {
+                    scanLogElement.innerHTML = '';
+                }
+                const logItem = document.createElement('div');
+                logItem.className = 'scan-log-item p-2 rounded-lg border';
+                const now = new Date();
+                const timeString = now.toLocaleTimeString();
+
+                if (found) {
+                    const claimedCount = logData.claimedParts.length;
+                    const totalCount = logData.registeredParts.length;
+                    logItem.classList.add('bg-green-50', 'border-green-200');
+                    logItem.innerHTML = `<p class="font-semibold">${logData.name}</p><p class="text-sm text-slate-600">Status: Claimed ${claimedCount}/${totalCount} parts. <span class="text-xs text-slate-400 float-right">${timeString}</span></p>`;
+                } else {
+                    let statusText = logData.reason === 'Invalid' ? 'Invalid QR Code' : 'Not Registered';
+                    logItem.classList.add('bg-red-50', 'border-red-200');
+                    logItem.innerHTML = `<p class="font-semibold">Scanned: ${logData.id}</p><p class="text-sm text-slate-600">Status: ${statusText} <span class="text-xs text-slate-400 float-right">${timeString}</span></p>`;
+                }
+                scanLogElement.prepend(logItem);
+            }
+
+            function enableAppFeatures() {
+                downloadBtn.disabled = false;
+                startScanBtn.classList.remove('hidden'); // Show the start button
+            }
+
+            // --- Event Handlers ---
+            function handleFileLoad(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        registrationData = JSON.parse(e.target.result);
+                        showModal('Registration data loaded!');
+                        saveDataToLocalStorage();
+                        enableAppFeatures();
+                    } catch (error) {
+                        showModal('Failed to load. Check JSON file format.');
+                    }
+                };
+                reader.readAsText(file);
+            }
+
+            function handleDownload() {
+                if (registrationData.length === 0) {
+                    showModal('No data to download.');
+                    return;
+                }
+                const dataStr = JSON.stringify(registrationData, null, 2);
+                const dataBlob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(dataBlob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `registration_data_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+                link.click();
+                URL.revokeObjectURL(url);
+            }
+            
+            function handleClaimToggle(event) {
+                const { attendeeId, part } = event.target.dataset;
+                const isChecked = event.target.checked;
+                const attendee = registrationData.find(a => a.id === attendeeId);
+                if (attendee) {
+                    if (isChecked) {
+                        if (!attendee.claimedParts.includes(part)) attendee.claimedParts.push(part);
+                    } else {
+                        attendee.claimedParts = attendee.claimedParts.filter(p => p !== part);
+                    }
+                    saveDataToLocalStorage();
+                }
+            }
+
+            function handleSearch() {
+                const query = searchInput.value.toLowerCase().trim();
+                searchResultsElement.innerHTML = '';
+                if (query.length < 2) return;
+
+                const results = registrationData.filter(a => a.name.toLowerCase().includes(query) || a.id.toLowerCase().includes(query));
+                if (results.length > 0) {
+                    searchResultsElement.innerHTML = results.map(attendee => `
+                        <div class="p-2 border-b hover:bg-slate-100 cursor-pointer search-result-item" data-attendee-id="${attendee.id}">
+                            <p class="font-medium">${attendee.name}</p><p class="text-sm text-slate-500">${attendee.id}</p>
+                        </div>`).join('');
+                    
+                    document.querySelectorAll('.search-result-item').forEach(item => {
+                        item.addEventListener('click', (e) => {
+                            const attendee = registrationData.find(a => a.id === e.currentTarget.dataset.attendeeId);
+                            if (attendee) {
+                                displayAttendeeInfo(attendee);
+                                searchInput.value = '';
+                                searchResultsElement.innerHTML = '';
+                            }
+                        });
+                    });
+                } else {
+                    searchResultsElement.innerHTML = '<p class="p-2 text-slate-500">No results found.</p>';
+                }
+            }
+
+            // --- QR Scanner Logic ---
+            function startScanner() {
+                if (html5QrCode && html5QrCode.isScanning) return;
+                html5QrCode = new Html5Qrcode("qr-reader");
+                html5QrCode.start(
+                    { facingMode: "environment" },
+                    { fps: 10, qrbox: { width: 250, height: 250 } },
+                    onScanSuccess,
+                    () => {} // onScanFailure - do nothing
+                ).catch(err => {
+                    updateScanStatus('Camera permission denied or not available.', 'fas fa-exclamation-triangle', 'bg-red-500');
+                });
+            }
+
+            function handleInvalidScan(scannedText) {
+                updateScanStatus(`Invalid QR Code`, 'fas fa-times-circle', 'bg-red-500');
+                attendeeInfoSection.classList.add('hidden');
+                addToScanLog({ id: scannedText, reason: 'Invalid' }, false);
+                setTimeout(() => { lastScannedId = null; }, 3000);
+            }
+
+            function onScanSuccess(decodedText) {
+                if (decodedText === lastScannedId) return;
+                lastScannedId = decodedText;
+                if (navigator.vibrate) navigator.vibrate(100);
+
+                const qrPrefix = "https://chayannito26.com/verify/";
+                if (!decodedText.startsWith(qrPrefix)) {
+                    handleInvalidScan(decodedText);
+                    return;
+                }
+
+                const base64Part = decodedText.substring(qrPrefix.length);
+                let attendeeId;
+                try {
+                    attendeeId = atob(base64Part);
+                } catch (e) {
+                    handleInvalidScan(decodedText);
+                    return;
+                }
+
+                const attendee = registrationData.find(a => a.id === attendeeId);
+                if (attendee) {
+                    updateScanStatus(`Success! Found: ${attendee.name}`, 'fas fa-check-circle', 'bg-green-500');
+                    displayAttendeeInfo(attendee);
+                    addToScanLog(attendee, true);
+                } else {
+                    updateScanStatus(`ID Not Found: ${attendeeId}`, 'fas fa-times-circle', 'bg-red-500');
+                    attendeeInfoSection.classList.add('hidden');
+                    addToScanLog({ id: attendeeId, reason: 'Not Found' }, false);
+                }
+                
+                setTimeout(() => { lastScannedId = null; }, 3000);
+            }
+
+            // --- Initialization ---
+            function init() {
+                downloadBtn.disabled = true;
+                jsonFileInput.addEventListener('change', handleFileLoad);
+                downloadBtn.addEventListener('click', handleDownload);
+                searchInput.addEventListener('input', handleSearch);
+                modalCloseBtn.addEventListener('click', hideModal);
+                
+                startScanBtn.addEventListener('click', () => {
+                    startScanBtn.classList.add('hidden');
+                    qrReaderContainer.classList.remove('hidden');
+                    updateScanStatus('Ready to scan', 'fas fa-qrcode', 'bg-blue-500');
+                    startScanner();
+                });
+
+                loadDataFromLocalStorage();
+            }
+
+            init();
+        });
+    </script>
+</body>
+</html>
