@@ -31,34 +31,49 @@
         .claimed-label {
             position: relative;
             cursor: pointer;
+            display: inline-block;
+            width: 24px;
+            height: 24px;
         }
         .claimed-label input {
-            display: none;
+            opacity: 0;
+            width: 0;
+            height: 0;
         }
         .claimed-label .checkbox-ui {
-            width: 44px;
-            height: 24px;
-            background-color: #e2e8f0;
-            border-radius: 9999px;
-            position: relative;
-            transition: background-color 0.2s ease;
-        }
-        .claimed-label .checkbox-ui::after {
-            content: '';
             position: absolute;
-            top: 2px;
-            left: 2px;
-            width: 20px;
-            height: 20px;
-            background-color: white;
-            border-radius: 50%;
-            transition: transform 0.2s ease;
+            top: 0;
+            left: 0;
+            height: 24px;
+            width: 24px;
+            background-color: #e2e8f0; /* slate-200 */
+            border: 1px solid #cbd5e1; /* slate-300 */
+            border-radius: 0.25rem;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .claimed-label:hover .checkbox-ui {
+            background-color: #cbd5e1; /* slate-300 */
         }
         .claimed-label input:checked + .checkbox-ui {
-            background-color: #34d399; /* green-400 */
+            background-color: #22c55e; /* green-500 */
+        }
+        .claimed-label .checkbox-ui::after {
+            content: "";
+            position: absolute;
+            display: none;
+            left: 8px;
+            top: 4px;
+            width: 6px;
+            height: 12px;
+            border: solid white;
+            border-width: 0 3px 3px 0;
+            transform: rotate(45deg);
         }
         .claimed-label input:checked + .checkbox-ui::after {
-            transform: translateX(20px);
+            display: block;
         }
         /* Simple modal for messages */
         .modal-overlay {
@@ -228,7 +243,7 @@
                             <span class="font-medium">${part}</span>
                             <label class="claimed-label">
                                 <input type="checkbox" class="claim-checkbox" data-attendee-id="${attendee.id}" data-part="${part}" ${isClaimed ? 'checked' : ''}>
-                                <div class="checkbox-ui"></div>
+                                <span class="checkbox-ui"></span>
                             </label>
                         </div>
                     `;
