@@ -380,14 +380,30 @@
                     return;
                 }
 
-                const base64Part = decodedText.substring(qrPrefix.length);
+                const encodedPart = decodedText.substring(qrPrefix.length);
+
+                function rot13(str) {
+                    return str.replace(/[a-zA-Z]/g, function (c) {
+                        return String.fromCharCode(
+                            c.charCodeAt(0) +
+                            (c.toLowerCase() < 'n' ? 13 : -13)
+                        );
+                    });
+                }
+
                 let attendeeId;
                 try {
-                    attendeeId = atob(base64Part);
+                    // Reverse the string
+                    const reversed = encodedPart.split("").reverse().join("");
+                    // Apply ROT13
+                    const rotDecoded = rot13(reversed);
+                    // Base64 decode
+                    attendeeId = atob(rotDecoded);
                 } catch (e) {
                     handleInvalidScan(decodedText);
                     return;
                 }
+
 
                 const attendee = registrationData.find(a => a.id === attendeeId);
                 if (attendee) {
