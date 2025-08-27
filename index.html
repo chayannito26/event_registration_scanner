@@ -182,7 +182,39 @@
 
 
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
+            // --- Password Protection ---
+            const PASSWORD = "changeme123"; // Set your password here
+            const PASSWORD_KEY = "eventScannerAuth";
+
+            function showPasswordModal() {
+                const modal = document.getElementById('modal');
+                const modalMessage = document.getElementById('modal-message');
+                const modalCloseBtn = document.getElementById('modal-close-btn');
+                modalMessage.innerHTML = `<input type="password" id="password-input" placeholder="Enter password..." class="w-full p-2 border border-slate-300 rounded-lg mb-4" autofocus><br><span id="password-error" class="text-red-500 text-sm"></span>`;
+                modalCloseBtn.textContent = "Submit";
+                modal.classList.remove('hidden');
+                modalCloseBtn.onclick = function() {
+                    const input = document.getElementById('password-input').value;
+                    const error = document.getElementById('password-error');
+                    if (input === PASSWORD) {
+                        localStorage.setItem(PASSWORD_KEY, "1");
+                        modal.classList.add('hidden');
+                        location.reload();
+                    } else {
+                        error.textContent = "Incorrect password.";
+                    }
+                };
+            }
+
+            function isAuthenticated() {
+                return localStorage.getItem(PASSWORD_KEY) === "1";
+            }
+
+            document.addEventListener('DOMContentLoaded', () => {
+                if (!isAuthenticated()) {
+                    showPasswordModal();
+                    return;
+                }
             // --- DOM Element References ---
             const jsonFileInput = document.getElementById('json-file-input');
             const downloadBtn = document.getElementById('download-json-btn');
@@ -440,7 +472,10 @@
                 jsonFileInput.addEventListener('change', handleFileLoad);
                 downloadBtn.addEventListener('click', handleDownload);
                 searchInput.addEventListener('input', handleSearch);
-                modalCloseBtn.addEventListener('click', hideModal);
+                    // Only allow modal close for non-password modals
+                    if (isAuthenticated()) {
+                        modalCloseBtn.addEventListener('click', hideModal);
+                    }
                 
                 startScanBtn.addEventListener('click', () => {
                     startScanBtn.classList.add('hidden');
