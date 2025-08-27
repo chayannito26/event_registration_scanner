@@ -419,7 +419,7 @@
             function onScanSuccess(decodedText) {
                 if (decodedText === lastScannedId) return;
                 lastScannedId = decodedText;
-                if (navigator.vibrate) navigator.vibrate(100);
+                if (navigator.vibrate) navigator.vibrate(1000);
 
                 const qrPrefix = "https://chayannito26.com/verify/";
                 if (!decodedText.startsWith(qrPrefix)) {
