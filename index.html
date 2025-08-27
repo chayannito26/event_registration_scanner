@@ -237,6 +237,22 @@
             let lastScannedId = null;
 
             // --- Utility Functions ---
+            // Vibration patterns for tactile feedback
+            const VIB_PATTERNS = {
+                success: [200, 50, 200], // two short pulses
+                notFound: [400],         // one long pulse
+                invalid: [100, 50, 100]  // quick double pulse
+            };
+
+            function doVibrate(pattern) {
+                if (navigator && typeof navigator.vibrate === 'function') {
+                    try {
+                        navigator.vibrate(pattern);
+                    } catch (e) {
+                        // ignore vibration errors silently
+                    }
+                }
+            }
             function showModal(message) {
                 modalMessage.textContent = message;
                 modal.classList.remove('hidden');
@@ -413,13 +429,14 @@
                 updateScanStatus(`Invalid QR Code`, 'fas fa-times-circle', 'bg-red-500');
                 attendeeInfoSection.classList.add('hidden');
                 addToScanLog({ id: scannedText, reason: 'Invalid' }, false);
+                doVibrate(VIB_PATTERNS.invalid);
                 setTimeout(() => { lastScannedId = null; }, 3000);
             }
 
             function onScanSuccess(decodedText) {
                 if (decodedText === lastScannedId) return;
                 lastScannedId = decodedText;
-                if (navigator.vibrate) navigator.vibrate(1000);
+                // provide distinct vibration feedback depending on result
 
                 const qrPrefix = "https://chayannito26.com/verify/";
                 if (!decodedText.startsWith(qrPrefix)) {
@@ -457,10 +474,12 @@
                     updateScanStatus(`Success! Found: ${attendee.name}`, 'fas fa-check-circle', 'bg-green-500');
                     displayAttendeeInfo(attendee);
                     addToScanLog(attendee, true);
+                    doVibrate(VIB_PATTERNS.success);
                 } else {
                     updateScanStatus(`ID Not Found: ${attendeeId}`, 'fas fa-times-circle', 'bg-red-500');
                     attendeeInfoSection.classList.add('hidden');
                     addToScanLog({ id: attendeeId, reason: 'Not Found' }, false);
+                    doVibrate(VIB_PATTERNS.notFound);
                 }
                 
                 setTimeout(() => { lastScannedId = null; }, 3000);
