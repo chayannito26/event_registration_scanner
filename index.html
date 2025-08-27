@@ -174,8 +174,18 @@
         <!-- Scan Log Section -->
         <section id="scan-log-section" class="bg-white p-4 rounded-lg shadow-sm">
             <h2 class="text-lg font-semibold mb-3 border-b pb-2">Recent Scans</h2>
+            <div class="flex items-center justify-between mb-3 gap-3">
+                <div class="flex items-center gap-2">
+                    <label for="scan-log-max" class="text-sm text-slate-600">Keep last</label>
+                    <input id="scan-log-max" type="number" min="1" max="500" class="w-20 p-1 border border-slate-300 rounded" />
+                    <span class="text-sm text-slate-600">entries</span>
+                </div>
+                <div>
+                    <button id="clear-scan-log-btn" class="bg-red-500 hover:bg-red-600 text-white text-sm font-semibold py-1 px-3 rounded">Clear Log</button>
+                </div>
+            </div>
             <div id="scan-log" class="space-y-2 max-h-60 overflow-y-auto">
-                <p class="text-slate-500 text-center">No scans yet.</p>
+                <p id="scan-log-placeholder" class="text-slate-500 text-center">No scans yet.</p>
             </div>
         </section>
 
@@ -246,6 +256,13 @@
             let lastScannedId = null;
             let availableCameras = [];
             let currentCameraId = null;
+            let scanHistory = [];
+            const SCAN_HISTORY_KEY = 'scanHistory';
+            const SCAN_LOG_MAX_KEY = 'scanLogMax';
+            const CAMERA_ID_KEY = 'selectedCameraId';
+            const SCANNER_OPEN_KEY = 'scannerOpen';
+            const DEFAULT_MAX_SCAN_ENTRIES = 20;
+            let maxScanEntries = DEFAULT_MAX_SCAN_ENTRIES;
 
             // --- Utility Functions ---
             // Vibration patterns for tactile feedback
@@ -322,17 +339,19 @@
             }
 
             function addToScanLog(logData, found) {
-                if (scanLogElement.querySelector('p')) {
-                    scanLogElement.innerHTML = '';
-                }
+                // Remove placeholder if present
+                const placeholder = document.getElementById('scan-log-placeholder');
+                if (placeholder) placeholder.remove();
+
+                // Build and prepend the visual log item
                 const logItem = document.createElement('div');
                 logItem.className = 'scan-log-item p-2 rounded-lg border';
                 const now = new Date();
                 const timeString = now.toLocaleTimeString();
 
                 if (found) {
-                    const claimedCount = logData.claimedParts.length;
-                    const totalCount = logData.registeredParts.length;
+                    const claimedCount = (logData.claimedParts || []).length;
+                    const totalCount = (logData.registeredParts || []).length;
                     logItem.classList.add('bg-green-50', 'border-green-200');
                     logItem.innerHTML = `<p class="font-semibold">${logData.name}</p><p class="text-sm text-slate-600">Status: Claimed ${claimedCount}/${totalCount} parts. <span class="text-xs text-slate-400 float-right">${timeString}</span></p>`;
                 } else {
@@ -341,6 +360,56 @@
                     logItem.innerHTML = `<p class="font-semibold">Scanned: ${logData.id}</p><p class="text-sm text-slate-600">Status: ${statusText} <span class="text-xs text-slate-400 float-right">${timeString}</span></p>`;
                 }
                 scanLogElement.prepend(logItem);
+
+                // Add to in-memory history and persist
+                const entry = {
+                    time: new Date().toISOString(),
+                    found: !!found,
+                    payload: found ? { id: logData.id || '', name: logData.name || '', claimedParts: logData.claimedParts || [], registeredParts: logData.registeredParts || [] } : { id: logData.id || '', reason: logData.reason }
+                };
+                scanHistory.unshift(entry);
+                // Enforce max size
+                if (scanHistory.length > maxScanEntries) scanHistory.splice(maxScanEntries);
+                try { localStorage.setItem(SCAN_HISTORY_KEY, JSON.stringify(scanHistory)); } catch (e) { console.warn('Could not save scan history', e); }
+            }
+
+            function renderScanHistory() {
+                const log = document.getElementById('scan-log');
+                log.innerHTML = '';
+                if (!scanHistory || scanHistory.length === 0) {
+                    log.innerHTML = '<p id="scan-log-placeholder" class="text-slate-500 text-center">No scans yet.</p>';
+                    return;
+                }
+                scanHistory.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'scan-log-item p-2 rounded-lg border ' + (item.found ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200');
+                    const timeString = new Date(item.time).toLocaleTimeString();
+                    if (item.found) {
+                        const claimedCount = (item.payload.claimedParts || []).length;
+                        const totalCount = (item.payload.registeredParts || []).length;
+                        div.innerHTML = `<p class="font-semibold">${item.payload.name || item.payload.id}</p><p class="text-sm text-slate-600">Status: Claimed ${claimedCount}/${totalCount} parts. <span class="text-xs text-slate-400 float-right">${timeString}</span></p>`;
+                    } else {
+                        const statusText = (item.payload.reason === 'Invalid') ? 'Invalid QR Code' : 'Not Registered';
+                        div.innerHTML = `<p class="font-semibold">Scanned: ${item.payload.id}</p><p class="text-sm text-slate-600">Status: ${statusText} <span class="text-xs text-slate-400 float-right">${timeString}</span></p>`;
+                    }
+                    log.appendChild(div);
+                });
+            }
+
+            function loadScanHistoryFromStorage() {
+                try {
+                    const raw = localStorage.getItem(SCAN_HISTORY_KEY);
+                    if (raw) scanHistory = JSON.parse(raw) || [];
+                } catch (e) {
+                    console.warn('Failed to load scan history', e);
+                    scanHistory = [];
+                }
+            }
+
+            function clearScanHistory() {
+                scanHistory = [];
+                try { localStorage.removeItem(SCAN_HISTORY_KEY); } catch (e) { console.warn('Could not clear scan history', e); }
+                renderScanHistory();
             }
 
             function enableAppFeatures() {
@@ -447,6 +516,8 @@
                     }
                     html5QrCode.clear();
                     html5QrCode = null;
+                    // mark scanner as closed
+                    try { localStorage.removeItem(SCANNER_OPEN_KEY); } catch (e) {}
                 }
             }
 
@@ -596,7 +667,7 @@
             }
 
             // --- Initialization ---
-            function init() {
+            async function init() {
                 downloadBtn.disabled = true;
                 jsonFileInput.addEventListener('change', handleFileLoad);
                 downloadBtn.addEventListener('click', handleDownload);
@@ -610,6 +681,8 @@
                     startScanBtn.classList.add('hidden');
                     qrReaderContainer.classList.remove('hidden');
                     updateScanStatus('Ready to scan', 'fas fa-qrcode', 'bg-blue-500');
+                    // persist that scanner UI is open
+                    try { localStorage.setItem(SCANNER_OPEN_KEY, '1'); } catch (e) {}
                     enumerateCameras().then(() => startScanner());
                 });
 
@@ -618,6 +691,7 @@
                 const switchCameraBtn = document.getElementById('switch-camera-btn');
                 cameraSelector.addEventListener('change', async (e) => {
                     currentCameraId = e.target.value;
+                    try { localStorage.setItem(CAMERA_ID_KEY, currentCameraId); } catch (err) {}
                     await stopScanner();
                     startScanner();
                 });
@@ -628,9 +702,72 @@
                     const next = (idx + 1) % availableCameras.length;
                     currentCameraId = availableCameras[next].id || availableCameras[next].deviceId;
                     if (cameraSelector.options.length) cameraSelector.value = currentCameraId;
+                    try { localStorage.setItem(CAMERA_ID_KEY, currentCameraId); } catch (err) {}
                     await stopScanner();
                     startScanner();
                 });
+
+                // --- Scan history: load and wire controls ---
+                const maxInput = document.getElementById('scan-log-max');
+                const clearBtn = document.getElementById('clear-scan-log-btn');
+                // load previously configured max or default
+                try {
+                    const savedMax = parseInt(localStorage.getItem(SCAN_LOG_MAX_KEY), 10);
+                    if (!isNaN(savedMax) && savedMax > 0) maxScanEntries = savedMax;
+                } catch (e) { /* ignore */ }
+                maxInput.value = maxScanEntries;
+
+                // enumerate cameras first so we can restore camera selection
+                await enumerateCameras();
+
+                // restore selected camera if present
+                try {
+                    const savedCam = localStorage.getItem(CAMERA_ID_KEY);
+                    if (savedCam) {
+                        currentCameraId = savedCam;
+                        const selector = document.getElementById('camera-selector');
+                        if (selector && selector.options.length) {
+                            // try to set selector to saved value if it exists
+                            const opt = Array.from(selector.options).find(o => o.value === savedCam);
+                            if (opt) selector.value = savedCam;
+                        }
+                    }
+                } catch (e) { /* ignore */ }
+
+                loadScanHistoryFromStorage();
+                // trim history to current max
+                if (scanHistory.length > maxScanEntries) scanHistory.splice(maxScanEntries);
+                renderScanHistory();
+
+                maxInput.addEventListener('change', (e) => {
+                    const v = parseInt(e.target.value, 10);
+                    if (!isNaN(v) && v > 0) {
+                        maxScanEntries = Math.min(500, v);
+                        localStorage.setItem(SCAN_LOG_MAX_KEY, String(maxScanEntries));
+                        if (scanHistory.length > maxScanEntries) {
+                            scanHistory.splice(maxScanEntries);
+                            localStorage.setItem(SCAN_HISTORY_KEY, JSON.stringify(scanHistory));
+                            renderScanHistory();
+                        }
+                    }
+                });
+
+                clearBtn.addEventListener('click', () => {
+                    if (confirm('Clear scan history? This cannot be undone.')) {
+                        clearScanHistory();
+                    }
+                });
+
+                // restore scanner-open state (auto-open UI and start scanner if previously open)
+                try {
+                    const wasOpen = localStorage.getItem(SCANNER_OPEN_KEY) === '1';
+                    if (wasOpen) {
+                        startScanBtn.classList.add('hidden');
+                        qrReaderContainer.classList.remove('hidden');
+                        updateScanStatus('Ready to scan', 'fas fa-qrcode', 'bg-blue-500');
+                        startScanner();
+                    }
+                } catch (e) {}
 
                 loadDataFromLocalStorage();
             }
