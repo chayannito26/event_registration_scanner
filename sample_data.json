@@ -1,25 +1,25 @@
 [
     {
-      "id": "CO-B-0066",
+      "id": "SC-B-0002",
       "name": "Faisal Arefin",
       "registeredParts": ["Khabar", "T-Shirt"],
       "claimedParts": ["Khabar"]
     },
     {
-      "id": "AR-B-0018",
+      "id": "AR-B-0001",
       "name": "Afiya Rubaiyah",
       "registeredParts": ["Khabar"],
       "claimedParts": []
     },
     {
-      "id": "SC-B-0124",
+      "id": "SC-B-0001",
       "name": "Arian Mollik Wasi",
       "registeredParts": ["Khabar", "T-Shirt"],
       "claimedParts": []
     },
     {
-        "id": "SC-B-0125",
-        "name": "Tohfa Alahi",
+        "id": "CO-G-0001",
+        "name": "S Shanta",
         "registeredParts": ["Khabar", "T-Shirt"],
         "claimedParts": ["Khabar", "T-Shirt"]
     }
