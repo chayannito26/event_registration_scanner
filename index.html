@@ -137,6 +137,15 @@
             </button>
             <!-- The QR reader and status are now hidden until the button is clicked -->
             <div id="qr-reader-container" class="hidden mt-4">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex-1 mr-3">
+                        <label id="camera-selector-label" for="camera-selector" class="block text-sm font-medium text-slate-700 mb-1 hidden">Select Camera</label>
+                        <select id="camera-selector" class="w-full p-2 border border-slate-300 rounded-lg hidden"></select>
+                    </div>
+                    <div>
+                        <button id="switch-camera-btn" class="hidden bg-slate-200 hover:bg-slate-300 text-slate-700 py-2 px-3 rounded-lg">Switch</button>
+                    </div>
+                </div>
                 <div id="qr-reader" class="w-full mx-auto"></div>
                 <div id="scan-status" class="mt-4 text-center font-medium p-3 rounded-lg bg-slate-100 text-slate-700">
                     <i class="fas fa-camera mr-2"></i>Awaiting registration data...
@@ -235,6 +244,8 @@
             let registrationData = [];
             let html5QrCode = null;
             let lastScannedId = null;
+            let availableCameras = [];
+            let currentCameraId = null;
 
             // --- Utility Functions ---
             // Vibration patterns for tactile feedback
@@ -413,16 +424,62 @@
 
             // --- QR Scanner Logic ---
             function startScanner() {
-                if (html5QrCode && html5QrCode.isScanning) return;
+                if (html5QrCode && html5QrCode._isScanning) return;
                 html5QrCode = new Html5Qrcode("qr-reader");
+                const cameraConfig = currentCameraId ? { deviceId: { exact: currentCameraId } } : { facingMode: "environment" };
                 html5QrCode.start(
-                    { facingMode: "environment" },
+                    cameraConfig,
                     { fps: 10, qrbox: { width: 250, height: 250 } },
                     onScanSuccess,
                     () => {} // onScanFailure - do nothing
                 ).catch(err => {
+                    console.error('Scanner start error', err);
                     updateScanStatus('Camera permission denied or not available.', 'fas fa-exclamation-triangle', 'bg-red-500');
                 });
+            }
+
+            async function stopScanner() {
+                if (html5QrCode) {
+                    try {
+                        await html5QrCode.stop();
+                    } catch (e) {
+                        console.warn('Error stopping scanner', e);
+                    }
+                    html5QrCode.clear();
+                    html5QrCode = null;
+                }
+            }
+
+            async function enumerateCameras() {
+                if (!Html5Qrcode.getCameras) return;
+                try {
+                    const devices = await Html5Qrcode.getCameras();
+                    availableCameras = devices || [];
+                    const selector = document.getElementById('camera-selector');
+                    const label = document.getElementById('camera-selector-label');
+                    const switchBtn = document.getElementById('switch-camera-btn');
+                    selector.innerHTML = '';
+                    if (availableCameras.length > 1) {
+                        availableCameras.forEach(cam => {
+                            const opt = document.createElement('option');
+                            opt.value = cam.id || cam.deviceId || cam.label;
+                            opt.textContent = cam.label || cam.id || cam.deviceId || 'Camera';
+                            selector.appendChild(opt);
+                        });
+                        selector.classList.remove('hidden');
+                        label.classList.remove('hidden');
+                        switchBtn.classList.remove('hidden');
+                        // set default
+                        currentCameraId = selector.value;
+                    } else {
+                        selector.classList.add('hidden');
+                        label.classList.add('hidden');
+                        switchBtn.classList.add('hidden');
+                        currentCameraId = availableCameras[0] ? (availableCameras[0].id || availableCameras[0].deviceId) : null;
+                    }
+                } catch (e) {
+                    console.warn('Could not enumerate cameras', e);
+                }
             }
 
             function handleInvalidScan(scannedText) {
@@ -500,6 +557,25 @@
                     startScanBtn.classList.add('hidden');
                     qrReaderContainer.classList.remove('hidden');
                     updateScanStatus('Ready to scan', 'fas fa-qrcode', 'bg-blue-500');
+                    enumerateCameras().then(() => startScanner());
+                });
+
+                // camera selector change
+                const cameraSelector = document.getElementById('camera-selector');
+                const switchCameraBtn = document.getElementById('switch-camera-btn');
+                cameraSelector.addEventListener('change', async (e) => {
+                    currentCameraId = e.target.value;
+                    await stopScanner();
+                    startScanner();
+                });
+
+                switchCameraBtn.addEventListener('click', async () => {
+                    if (!availableCameras || availableCameras.length < 2) return;
+                    const idx = availableCameras.findIndex(c => (c.id || c.deviceId) === currentCameraId);
+                    const next = (idx + 1) % availableCameras.length;
+                    currentCameraId = availableCameras[next].id || availableCameras[next].deviceId;
+                    if (cameraSelector.options.length) cameraSelector.value = currentCameraId;
+                    await stopScanner();
                     startScanner();
                 });
 
