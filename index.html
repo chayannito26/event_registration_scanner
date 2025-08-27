@@ -459,23 +459,76 @@
                     const label = document.getElementById('camera-selector-label');
                     const switchBtn = document.getElementById('switch-camera-btn');
                     selector.innerHTML = '';
-                    if (availableCameras.length > 1) {
+
+                    // Helper: extract first integer from a string (used to compare numeric camera ids)
+                    function extractNumber(str) {
+                        if (!str) return NaN;
+                        const m = String(str).match(/\d+/);
+                        return m ? parseInt(m[0], 10) : NaN;
+                    }
+
+                    // Heuristic to detect back-facing camera from label
+                    function isBackDevice(dev) {
+                        const l = (dev.label || '').toLowerCase();
+                        return l.includes('back') || l.includes('rear') || l.includes('environment');
+                    }
+
+                    if (availableCameras.length > 0) {
+                        // populate selector options
                         availableCameras.forEach(cam => {
                             const opt = document.createElement('option');
                             opt.value = cam.id || cam.deviceId || cam.label;
                             opt.textContent = cam.label || cam.id || cam.deviceId || 'Camera';
                             selector.appendChild(opt);
                         });
-                        selector.classList.remove('hidden');
-                        label.classList.remove('hidden');
-                        switchBtn.classList.remove('hidden');
-                        // set default
-                        currentCameraId = selector.value;
+
+                        if (availableCameras.length > 1) {
+                            selector.classList.remove('hidden');
+                            label.classList.remove('hidden');
+                            switchBtn.classList.remove('hidden');
+
+                            // Primary: pick cameras whose label indicates 'back' or 'rear'
+                            const backCandidates = availableCameras.filter(isBackDevice);
+                            let chosen = null;
+
+                            if (backCandidates.length > 0) {
+                                // If numeric ids are present, choose the lowest numeric id
+                                backCandidates.sort((a, b) => {
+                                    const na = extractNumber(a.id || a.deviceId || a.label);
+                                    const nb = extractNumber(b.id || b.deviceId || b.label);
+                                    if (isNaN(na) && isNaN(nb)) return 0;
+                                    if (isNaN(na)) return 1;
+                                    if (isNaN(nb)) return -1;
+                                    return na - nb;
+                                });
+                                chosen = backCandidates[0];
+                            } else {
+                                // Fallback: pick the lowest numeric id among devices that don't explicitly say 'front'
+                                const numericDevices = availableCameras.filter(d => !isNaN(extractNumber(d.id || d.deviceId || d.label)));
+                                if (numericDevices.length > 0) {
+                                    numericDevices.sort((a, b) => extractNumber(a.id || a.deviceId || a.label) - extractNumber(b.id || b.deviceId || b.label));
+                                    const filtered = numericDevices.filter(d => { const l = (d.label || '').toLowerCase(); return !l.includes('front'); });
+                                    chosen = filtered.length ? filtered[0] : numericDevices[0];
+                                } else {
+                                    // Last resort: just pick the first available camera
+                                    chosen = availableCameras[0];
+                                }
+                            }
+
+                            currentCameraId = chosen.id || chosen.deviceId || chosen.label;
+                            if (selector.options.length) selector.value = currentCameraId;
+                        } else {
+                            // single camera available
+                            selector.classList.add('hidden');
+                            label.classList.add('hidden');
+                            switchBtn.classList.add('hidden');
+                            currentCameraId = availableCameras[0] ? (availableCameras[0].id || availableCameras[0].deviceId) : null;
+                        }
                     } else {
                         selector.classList.add('hidden');
                         label.classList.add('hidden');
                         switchBtn.classList.add('hidden');
-                        currentCameraId = availableCameras[0] ? (availableCameras[0].id || availableCameras[0].deviceId) : null;
+                        currentCameraId = null;
                     }
                 } catch (e) {
                     console.warn('Could not enumerate cameras', e);
