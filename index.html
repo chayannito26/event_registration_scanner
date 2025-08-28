@@ -414,24 +414,13 @@
             function handleClaimToggle(event) {
                 const { attendeeId, part } = event.target.dataset;
                 const isChecked = event.target.checked;
-                const currentClaimed = claimedData[attendeeId] || [];
-                let updatedClaimed;
-
+                // Use Firestore atomic array operations for concurrency safety
+                const docRef = firestore.collection('claimedParts').doc(attendeeId);
                 if (isChecked) {
-                    if (!currentClaimed.includes(part)) {
-                        updatedClaimed = [...currentClaimed, part];
-                    } else {
-                        updatedClaimed = currentClaimed;
-                    }
+                    docRef.set({ parts: firebase.firestore.FieldValue.arrayUnion(part) }, { merge: true });
                 } else {
-                    updatedClaimed = currentClaimed.filter(p => p !== part);
+                    docRef.set({ parts: firebase.firestore.FieldValue.arrayRemove(part) }, { merge: true });
                 }
-
-                // Update local state
-                claimedData[attendeeId] = updatedClaimed;
-
-                // Update Firestore
-                firestore.collection('claimedParts').doc(attendeeId).set({ parts: updatedClaimed });
             }
 
             function handleSearch() {
