@@ -748,6 +748,7 @@
                         querySnapshot.forEach((doc) => {
                             claimedData[doc.id] = doc.data().parts || [];
                         });
+                        console.log('[Firestore] Initial claimedParts:', JSON.parse(JSON.stringify(claimedData)));
                         // If attendee info is currently displayed, refresh it
                         const displayedAttendeeId = document.querySelector('.claim-checkbox')?.dataset.attendeeId;
                         if (displayedAttendeeId) {
@@ -760,13 +761,19 @@
 
                     // Listen for changes in claimed parts
                     firestore.collection('claimedParts').onSnapshot((snapshot) => {
+                        let changes = [];
                         snapshot.docChanges().forEach((change) => {
                             if (change.type === 'added' || change.type === 'modified') {
                                 claimedData[change.doc.id] = change.doc.data().parts || [];
                             } else if (change.type === 'removed') {
                                 delete claimedData[change.doc.id];
                             }
+                            changes.push({type: change.type, id: change.doc.id, parts: change.doc.data().parts || []});
                         });
+                        if (changes.length > 0) {
+                            console.log('[Firestore] claimedParts changes:', changes);
+                            console.log('[Firestore] claimedParts current state:', JSON.parse(JSON.stringify(claimedData)));
+                        }
                         // If attendee info is currently displayed, refresh it
                         const displayedAttendeeId = document.querySelector('.claim-checkbox')?.dataset.attendeeId;
                         if (displayedAttendeeId) {
