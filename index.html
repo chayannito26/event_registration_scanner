@@ -5,11 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Event Registration Scanner</title>
         <!-- PWA Manifest -->
-        <link rel="manifest" href="manifest.json">
-        <meta name="theme-color" content="#2563eb">
-        <meta name="apple-mobile-web-app-capable" content="yes">
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-        <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2563eb">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="icon" type="image/x-icon" href="favicon.ico"  />
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
     <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Font Awesome for icons -->
@@ -258,7 +259,7 @@
 
             // --- App State ---
             let registrationData = [];
-            let claimedData = {}; // To store claimed parts from Firebase
+            let claimedData = {}; // To store claimed parts (local + remote)
             let html5QrCode = null;
             let lastScannedId = null;
             let availableCameras = [];
@@ -268,6 +269,9 @@
             const SCAN_LOG_MAX_KEY = 'scanLogMax';
             const CAMERA_ID_KEY = 'selectedCameraId';
             const SCANNER_OPEN_KEY = 'scannerOpen';
+            const REGISTRANTS_CACHE_KEY = 'registrantsCache';
+            const CLAIMED_CACHE_KEY = 'claimedCache';
+            const CLAIMED_PENDING_KEY = 'claimedPendingSync';
             const DEFAULT_MAX_SCAN_ENTRIES = 20;
             let maxScanEntries = DEFAULT_MAX_SCAN_ENTRIES;
 
@@ -330,7 +334,6 @@
                         <div class="space-y-2">${partsHtml}</div>
                     </div>
                 `;
-                
                 document.querySelectorAll('.claim-checkbox').forEach(checkbox => {
                     checkbox.addEventListener('change', handleClaimToggle);
                 });
@@ -430,12 +433,33 @@
             function handleClaimToggle(event) {
                 const { attendeeId, part } = event.target.dataset;
                 const isChecked = event.target.checked;
-                // Use Firestore atomic array operations for concurrency safety
-                const docRef = firestore.collection('claimedParts').doc(attendeeId);
+                // Update local claimedData
+                let localParts = claimedData[attendeeId] || [];
                 if (isChecked) {
-                    docRef.set({ parts: firebase.firestore.FieldValue.arrayUnion(part) }, { merge: true });
+                    if (!localParts.includes(part)) localParts.push(part);
                 } else {
-                    docRef.set({ parts: firebase.firestore.FieldValue.arrayRemove(part) }, { merge: true });
+                    localParts = localParts.filter(p => p !== part);
+                }
+                claimedData[attendeeId] = localParts;
+                // Persist locally
+                try {
+                    const cache = JSON.parse(localStorage.getItem(CLAIMED_CACHE_KEY) || '{}');
+                    cache[attendeeId] = localParts;
+                    localStorage.setItem(CLAIMED_CACHE_KEY, JSON.stringify(cache));
+                } catch (e) {}
+                // Mark for sync if offline
+                if (!navigator.onLine) {
+                    let pending = JSON.parse(localStorage.getItem(CLAIMED_PENDING_KEY) || '[]');
+                    pending.push({ attendeeId, part, isChecked, ts: Date.now() });
+                    localStorage.setItem(CLAIMED_PENDING_KEY, JSON.stringify(pending));
+                } else {
+                    // Sync immediately if online
+                    const docRef = firestore.collection('claimedParts').doc(attendeeId);
+                    if (isChecked) {
+                        docRef.set({ parts: firebase.firestore.FieldValue.arrayUnion(part) }, { merge: true });
+                    } else {
+                        docRef.set({ parts: firebase.firestore.FieldValue.arrayRemove(part) }, { merge: true });
+                    }
                 }
             }
 
@@ -642,23 +666,34 @@
             }
 
             // --- Initialization ---
+            async function syncClaimedPending() {
+                if (!navigator.onLine) return;
+                let pending = [];
+                try { pending = JSON.parse(localStorage.getItem(CLAIMED_PENDING_KEY) || '[]'); } catch (e) {}
+                if (!pending.length) return;
+                for (const item of pending) {
+                    const docRef = firestore.collection('claimedParts').doc(item.attendeeId);
+                    if (item.isChecked) {
+                        await docRef.set({ parts: firebase.firestore.FieldValue.arrayUnion(item.part) }, { merge: true });
+                    } else {
+                        await docRef.set({ parts: firebase.firestore.FieldValue.arrayRemove(item.part) }, { merge: true });
+                    }
+                }
+                localStorage.removeItem(CLAIMED_PENDING_KEY);
+            }
+
             async function init() {
                 searchInput.addEventListener('input', handleSearch);
-                    // Only allow modal close for non-password modals
-                    if (isAuthenticated()) {
-                        modalCloseBtn.addEventListener('click', hideModal);
-                    }
-                
+                if (isAuthenticated()) {
+                    modalCloseBtn.addEventListener('click', hideModal);
+                }
                 startScanBtn.addEventListener('click', () => {
-                    startScanBtn.remove(); // Remove button from DOM
+                    startScanBtn.remove();
                     qrReaderContainer.classList.remove('hidden');
                     updateScanStatus('Ready to scan', 'fas fa-qrcode', 'bg-blue-500');
-                    // persist that scanner UI is open
                     try { localStorage.setItem(SCANNER_OPEN_KEY, '1'); } catch (e) {}
                     enumerateCameras().then(() => startScanner());
                 });
-
-                // camera selector change
                 const cameraSelector = document.getElementById('camera-selector');
                 const switchCameraBtn = document.getElementById('switch-camera-btn');
                 cameraSelector.addEventListener('change', async (e) => {
@@ -667,7 +702,6 @@
                     await stopScanner();
                     startScanner();
                 });
-
                 switchCameraBtn.addEventListener('click', async () => {
                     if (!availableCameras || availableCameras.length < 2) return;
                     const idx = availableCameras.findIndex(c => (c.id || c.deviceId) === currentCameraId);
@@ -678,39 +712,29 @@
                     await stopScanner();
                     startScanner();
                 });
-
                 // --- Scan history: load and wire controls ---
                 const maxInput = document.getElementById('scan-log-max');
                 const clearBtn = document.getElementById('clear-scan-log-btn');
-                // load previously configured max or default
                 try {
                     const savedMax = parseInt(localStorage.getItem(SCAN_LOG_MAX_KEY), 10);
                     if (!isNaN(savedMax) && savedMax > 0) maxScanEntries = savedMax;
-                } catch (e) { /* ignore */ }
+                } catch (e) { }
                 maxInput.value = maxScanEntries;
-
-                // enumerate cameras first so we can restore camera selection
                 await enumerateCameras();
-
-                // restore selected camera if present
                 try {
                     const savedCam = localStorage.getItem(CAMERA_ID_KEY);
                     if (savedCam) {
                         currentCameraId = savedCam;
                         const selector = document.getElementById('camera-selector');
                         if (selector && selector.options.length) {
-                            // try to set selector to saved value if it exists
                             const opt = Array.from(selector.options).find(o => o.value === savedCam);
                             if (opt) selector.value = savedCam;
                         }
                     }
-                } catch (e) { /* ignore */ }
-
+                } catch (e) { }
                 loadScanHistoryFromStorage();
-                // trim history to current max
                 if (scanHistory.length > maxScanEntries) scanHistory.splice(maxScanEntries);
                 renderScanHistory();
-
                 maxInput.addEventListener('change', (e) => {
                     const v = parseInt(e.target.value, 10);
                     if (!isNaN(v) && v > 0) {
@@ -723,48 +747,78 @@
                         }
                     }
                 });
-
                 clearBtn.addEventListener('click', () => {
                     if (confirm('Clear scan history? This cannot be undone.')) {
                         clearScanHistory();
                     }
                 });
-
-                // restore scanner-open state (auto-open UI and start scanner if previously open)
                 try {
                     const wasOpen = localStorage.getItem(SCANNER_OPEN_KEY) === '1';
                     if (wasOpen) {
-                        startScanBtn.remove(); // Remove button from DOM when restoring
+                        startScanBtn.remove();
                         qrReaderContainer.classList.remove('hidden');
                         updateScanStatus('Ready to scan', 'fas fa-qrcode', 'bg-blue-500');
                         startScanner();
                     }
                 } catch (e) {}
-
-                // Fetch registration data and then claimed data
-                try {
-                    const response = await fetch('https://chayannito26.com/verify/registrants.json');
-                    if (!response.ok) throw new Error('Network response was not ok');
-                    registrationData = await response.json();
-
-                    // Fetch claimed data from Firestore
-                    firestore.collection('claimedParts').get().then((querySnapshot) => {
-                        claimedData = {};
-                        querySnapshot.forEach((doc) => {
-                            claimedData[doc.id] = doc.data().parts || [];
-                        });
-                        console.log('[Firestore] Initial claimedParts:', JSON.parse(JSON.stringify(claimedData)));
-                        // If attendee info is currently displayed, refresh it
-                        const displayedAttendeeId = document.querySelector('.claim-checkbox')?.dataset.attendeeId;
-                        if (displayedAttendeeId) {
-                            const attendee = registrationData.find(a => a.registration_id === displayedAttendeeId);
-                            if (attendee) {
-                                displayAttendeeInfo(attendee);
-                            }
+                // --- Offline/Online Data Loading ---
+                async function loadRegistrants() {
+                    // Try local cache first
+                    let localData = null;
+                    try {
+                        localData = JSON.parse(localStorage.getItem(REGISTRANTS_CACHE_KEY) || 'null');
+                    } catch (e) {}
+                    if (localData && Array.isArray(localData) && localData.length) {
+                        registrationData = localData;
+                        return true;
+                    }
+                    // Fallback to network
+                    try {
+                        const response = await fetch('https://chayannito26.com/verify/registrants.json');
+                        if (!response.ok) throw new Error('Network response was not ok');
+                        registrationData = await response.json();
+                        localStorage.setItem(REGISTRANTS_CACHE_KEY, JSON.stringify(registrationData));
+                        return true;
+                    } catch (e) {
+                        updateScanStatus('Error loading registrants. Offline?', 'fas fa-exclamation-triangle', 'bg-red-500');
+                        return false;
+                    }
+                }
+                async function loadClaimed() {
+                    // Try local cache first
+                    let localClaimed = {};
+                    try {
+                        localClaimed = JSON.parse(localStorage.getItem(CLAIMED_CACHE_KEY) || '{}');
+                    } catch (e) {}
+                    claimedData = localClaimed;
+                    // If online, sync with Firestore
+                    if (navigator.onLine) {
+                        try {
+                            const querySnapshot = await firestore.collection('claimedParts').get();
+                            querySnapshot.forEach((doc) => {
+                                claimedData[doc.id] = doc.data().parts || [];
+                            });
+                            localStorage.setItem(CLAIMED_CACHE_KEY, JSON.stringify(claimedData));
+                        } catch (e) {
+                            // If Firestore fails, keep local
                         }
-                    });
-
-                    // Listen for changes in claimed parts
+                    }
+                }
+                // Listen for online/offline events
+                window.addEventListener('online', async () => {
+                    updateScanStatus('Online. Syncing...', 'fas fa-cloud-upload-alt', 'bg-blue-500');
+                    await syncClaimedPending();
+                    await loadClaimed();
+                    updateScanStatus('Ready to scan', 'fas fa-qrcode', 'bg-blue-500');
+                });
+                window.addEventListener('offline', () => {
+                    updateScanStatus('Offline mode. Changes will sync when online.', 'fas fa-wifi', 'bg-yellow-500');
+                });
+                // Initial load
+                const registrantsLoaded = await loadRegistrants();
+                await loadClaimed();
+                // Listen for changes in claimed parts (online only)
+                if (navigator.onLine) {
                     firestore.collection('claimedParts').onSnapshot((snapshot) => {
                         let changes = [];
                         snapshot.docChanges().forEach((change) => {
@@ -776,8 +830,7 @@
                             changes.push({type: change.type, id: change.doc.id, parts: change.doc.data().parts || []});
                         });
                         if (changes.length > 0) {
-                            console.log('[Firestore] claimedParts changes:', changes);
-                            console.log('[Firestore] claimedParts current state:', JSON.parse(JSON.stringify(claimedData)));
+                            localStorage.setItem(CLAIMED_CACHE_KEY, JSON.stringify(claimedData));
                         }
                         // If attendee info is currently displayed, refresh it
                         const displayedAttendeeId = document.querySelector('.claim-checkbox')?.dataset.attendeeId;
@@ -788,14 +841,9 @@
                             }
                         }
                     });
-
-                    enableAppFeatures();
-                } catch (error) {
-                    console.error('Failed to load registration data:', error);
-                    updateScanStatus('Error loading data. Please refresh.', 'fas fa-exclamation-triangle', 'bg-red-500');
                 }
+                enableAppFeatures();
             }
-
             init();
         });
     </script>

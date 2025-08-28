@@ -1,4 +1,4 @@
-const CACHE_NAME = 'event-scanner-cache-v1';
+const CACHE_NAME = 'event-scanner-cache-v2';
 const urlsToCache = [
   './',
   './index.html',
@@ -16,9 +16,38 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('fetch', event => {
+  const url = event.request.url;
+  // Cache API responses for registrants and claimed data
+  if (url.includes('/verify/registrants.json')) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then(async cache => {
+        try {
+          const response = await fetch(event.request);
+          cache.put(event.request, response.clone());
+          return response;
+        } catch (e) {
+          return cache.match(event.request);
+        }
+      })
+    );
+    return;
+  }
+  // Default: cache-first for static assets
   event.respondWith(
-    caches.match(event.request)
-      .then(response => response || fetch(event.request))
+    caches.match(event.request).then(response => {
+      return response || fetch(event.request).then(networkResponse => {
+        // Only cache GET requests
+        if (event.request.method === 'GET') {
+          caches.open(CACHE_NAME).then(cache => {
+            cache.put(event.request, networkResponse.clone());
+          });
+        }
+        return networkResponse;
+      }).catch(() => {
+        // Offline fallback: try cache
+        return caches.match(event.request);
+      });
+    })
   );
 });
 
