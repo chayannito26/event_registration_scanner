@@ -100,6 +100,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
 </head>
 <body class="bg-slate-50 text-slate-800">
 
@@ -108,25 +111,8 @@
         <!-- Header -->
         <header class="text-center">
             <h1 class="text-3xl font-bold text-slate-900">Event Registration Scanner</h1>
-            <p class="text-slate-600 mt-1">Load data, scan QR codes, and manage attendees.</p>
+            <p class="text-slate-600 mt-1">Scan QR codes and manage attendees.</p>
         </header>
-
-        <!-- Data Management Section -->
-        <section id="data-management" class="bg-white p-4 rounded-lg shadow-sm">
-            <h2 class="text-lg font-semibold mb-3 border-b pb-2">Data Management</h2>
-            <div class="flex flex-col sm:flex-row gap-3">
-                <div class="flex-1">
-                    <label for="json-file-input" class="block text-sm font-medium text-slate-700 mb-1">Load Registration JSON</label>
-                    <input type="file" id="json-file-input" accept=".json" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
-                </div>
-                <div class="flex-1">
-                     <label for="download-json-btn" class="block text-sm font-medium text-slate-700 mb-1">Save Progress</label>
-                    <button id="download-json-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-full transition duration-300 disabled:bg-gray-400 disabled:cursor-not-allowed">
-                        <i class="fas fa-download mr-2"></i>Download Updated JSON
-                    </button>
-                </div>
-            </div>
-        </section>
 
         <!-- QR Scanner and Status Section -->
         <section id="scanner-section" class="bg-white p-4 rounded-lg shadow-sm">
@@ -148,7 +134,7 @@
                 </div>
                 <div id="qr-reader" class="w-full mx-auto"></div>
                 <div id="scan-status" class="mt-4 text-center font-medium p-3 rounded-lg bg-slate-100 text-slate-700">
-                    <i class="fas fa-camera mr-2"></i>Awaiting registration data...
+                    <i class="fas fa-spinner fa-spin mr-2"></i>Loading registration data...
                 </div>
             </div>
         </section>
@@ -201,6 +187,22 @@
 
 
     <script>
+            // --- Firebase Configuration ---
+            const firebaseConfig = {
+            apiKey: "AIzaSyDsI5v9okHOdxbEw8k8hXwzPzZMpDrirbM",
+            authDomain: "chayannito-26.firebaseapp.com",
+            projectId: "chayannito-26",
+            storageBucket: "chayannito-26.firebasestorage.app",
+            messagingSenderId: "127749935084",
+            appId: "1:127749935084:web:8bf6df50ce2cbc96cdbac9",
+            measurementId: "G-CRHHT66GTQ"
+            };
+
+            // Initialize Firebase
+            firebase.initializeApp(firebaseConfig);
+            const firestore = firebase.firestore();
+
+
             // --- Password Protection ---
             const PASSWORD = "bulbul123"; // Set your password here
             const PASSWORD_KEY = "eventScannerAuth";
@@ -235,8 +237,6 @@
                     return;
                 }
             // --- DOM Element References ---
-            const jsonFileInput = document.getElementById('json-file-input');
-            const downloadBtn = document.getElementById('download-json-btn');
             const startScanBtn = document.getElementById('start-scan-btn');
             const qrReaderContainer = document.getElementById('qr-reader-container');
             const qrReaderElement = document.getElementById('qr-reader');
@@ -252,6 +252,7 @@
 
             // --- App State ---
             let registrationData = [];
+            let claimedData = {}; // To store claimed parts from Firebase
             let html5QrCode = null;
             let lastScannedId = null;
             let availableCameras = [];
@@ -289,21 +290,6 @@
             function hideModal() {
                 modal.classList.add('hidden');
             }
-
-            function saveDataToLocalStorage() {
-                if (registrationData.length > 0) {
-                    localStorage.setItem('registrationData', JSON.stringify(registrationData));
-                }
-            }
-
-            function loadDataFromLocalStorage() {
-                const savedData = localStorage.getItem('registrationData');
-                if (savedData) {
-                    registrationData = JSON.parse(savedData);
-                    console.log('Data loaded from localStorage.');
-                    enableAppFeatures();
-                }
-            }
             
             function updateScanStatus(text, iconClass, bgClass) {
                 if (text === 'Ready to scan') {
@@ -317,13 +303,14 @@
 
             function displayAttendeeInfo(attendee) {
                 attendeeInfoSection.classList.remove('hidden');
-                let partsHtml = attendee.registeredParts.map(part => {
-                    const isClaimed = attendee.claimedParts.includes(part);
+                const attendeeClaimedParts = claimedData[attendee.registration_id] || [];
+                let partsHtml = attendee.parts_available.map(part => {
+                    const isClaimed = attendeeClaimedParts.includes(part);
                     return `
                         <div class="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
                             <span class="font-medium">${part}</span>
                             <label class="claimed-label">
-                                <input type="checkbox" class="claim-checkbox" data-attendee-id="${attendee.id}" data-part="${part}" ${isClaimed ? 'checked' : ''}>
+                                <input type="checkbox" class="claim-checkbox" data-attendee-id="${attendee.registration_id}" data-part="${part}" ${isClaimed ? 'checked' : ''}>
                                 <span class="checkbox-ui"></span>
                             </label>
                         </div>
@@ -333,7 +320,7 @@
                 attendeeDetailsElement.innerHTML = `
                     <div class="space-y-3">
                         <p class="text-xl font-bold">${attendee.name}</p>
-                        <p class="text-sm text-slate-500">ID: ${attendee.id}</p>
+                        <p class="text-sm text-slate-500">ID: ${attendee.registration_id}</p>
                         <div class="space-y-2">${partsHtml}</div>
                     </div>
                 `;
@@ -355,8 +342,9 @@
                 const timeString = now.toLocaleTimeString();
 
                 if (found) {
-                    const claimedCount = (logData.claimedParts || []).length;
-                    const totalCount = (logData.registeredParts || []).length;
+                    const attendeeClaimedParts = claimedData[logData.registration_id] || [];
+                    const claimedCount = attendeeClaimedParts.length;
+                    const totalCount = (logData.parts_available || []).length;
                     logItem.classList.add('bg-green-50', 'border-green-200');
                     logItem.innerHTML = `<p class="font-semibold">${logData.name}</p><p class="text-sm text-slate-600">Status: Claimed ${claimedCount}/${totalCount} parts. <span class="text-xs text-slate-400 float-right">${timeString}</span></p>`;
                 } else {
@@ -370,7 +358,7 @@
                 const entry = {
                     time: new Date().toISOString(),
                     found: !!found,
-                    payload: found ? { id: logData.id || '', name: logData.name || '', claimedParts: logData.claimedParts || [], registeredParts: logData.registeredParts || [] } : { id: logData.id || '', reason: logData.reason }
+                    payload: found ? { id: logData.registration_id || '', name: logData.name || '', claimedParts: claimedData[logData.registration_id] || [], registeredParts: logData.parts_available || [] } : { id: logData.id || '', reason: logData.reason }
                 };
                 scanHistory.unshift(entry);
                 // Enforce max size
@@ -418,55 +406,32 @@
             }
 
             function enableAppFeatures() {
-                downloadBtn.disabled = false;
                 startScanBtn.classList.remove('hidden'); // Show the start button
+                updateScanStatus('Ready to scan', 'fas fa-qrcode', 'bg-blue-500');
             }
 
             // --- Event Handlers ---
-            function handleFileLoad(event) {
-                const file = event.target.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    try {
-                        registrationData = JSON.parse(e.target.result);
-                        showModal('Registration data loaded!');
-                        saveDataToLocalStorage();
-                        enableAppFeatures();
-                    } catch (error) {
-                        showModal('Failed to load. Check JSON file format.');
-                    }
-                };
-                reader.readAsText(file);
-            }
-
-            function handleDownload() {
-                if (registrationData.length === 0) {
-                    showModal('No data to download.');
-                    return;
-                }
-                const dataStr = JSON.stringify(registrationData, null, 2);
-                const dataBlob = new Blob([dataStr], { type: 'application/json' });
-                const url = URL.createObjectURL(dataBlob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `registration_data_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
-                link.click();
-                URL.revokeObjectURL(url);
-            }
-            
             function handleClaimToggle(event) {
                 const { attendeeId, part } = event.target.dataset;
                 const isChecked = event.target.checked;
-                const attendee = registrationData.find(a => a.id === attendeeId);
-                if (attendee) {
-                    if (isChecked) {
-                        if (!attendee.claimedParts.includes(part)) attendee.claimedParts.push(part);
+                const currentClaimed = claimedData[attendeeId] || [];
+                let updatedClaimed;
+
+                if (isChecked) {
+                    if (!currentClaimed.includes(part)) {
+                        updatedClaimed = [...currentClaimed, part];
                     } else {
-                        attendee.claimedParts = attendee.claimedParts.filter(p => p !== part);
+                        updatedClaimed = currentClaimed;
                     }
-                    saveDataToLocalStorage();
+                } else {
+                    updatedClaimed = currentClaimed.filter(p => p !== part);
                 }
+
+                // Update local state
+                claimedData[attendeeId] = updatedClaimed;
+
+                // Update Firestore
+                firestore.collection('claimedParts').doc(attendeeId).set({ parts: updatedClaimed });
             }
 
             function handleSearch() {
@@ -474,16 +439,16 @@
                 searchResultsElement.innerHTML = '';
                 if (query.length < 2) return;
 
-                const results = registrationData.filter(a => a.name.toLowerCase().includes(query) || a.id.toLowerCase().includes(query));
+                const results = registrationData.filter(a => a.name.toLowerCase().includes(query) || a.registration_id.toLowerCase().includes(query));
                 if (results.length > 0) {
                     searchResultsElement.innerHTML = results.map(attendee => `
-                        <div class="p-2 border-b hover:bg-slate-100 cursor-pointer search-result-item" data-attendee-id="${attendee.id}">
-                            <p class="font-medium">${attendee.name}</p><p class="text-sm text-slate-500">${attendee.id}</p>
+                        <div class="p-2 border-b hover:bg-slate-100 cursor-pointer search-result-item" data-attendee-id="${attendee.registration_id}">
+                            <p class="font-medium">${attendee.name}</p><p class="text-sm text-slate-500">${attendee.registration_id}</p>
                         </div>`).join('');
                     
                     document.querySelectorAll('.search-result-item').forEach(item => {
                         item.addEventListener('click', (e) => {
-                            const attendee = registrationData.find(a => a.id === e.currentTarget.dataset.attendeeId);
+                            const attendee = registrationData.find(a => a.registration_id === e.currentTarget.dataset.attendeeId);
                             if (attendee) {
                                 displayAttendeeInfo(attendee);
                                 searchInput.value = '';
@@ -655,7 +620,7 @@
                 }
 
 
-                const attendee = registrationData.find(a => a.id === attendeeId);
+                const attendee = registrationData.find(a => a.registration_id === attendeeId);
                 if (attendee) {
                     updateScanStatus(`Success! Found: ${attendee.name}`, 'fas fa-check-circle', 'bg-green-500');
                     displayAttendeeInfo(attendee);
@@ -673,9 +638,6 @@
 
             // --- Initialization ---
             async function init() {
-                downloadBtn.disabled = true;
-                jsonFileInput.addEventListener('change', handleFileLoad);
-                downloadBtn.addEventListener('click', handleDownload);
                 searchInput.addEventListener('input', handleSearch);
                     // Only allow modal close for non-password modals
                     if (isAuthenticated()) {
@@ -774,7 +736,52 @@
                     }
                 } catch (e) {}
 
-                loadDataFromLocalStorage();
+                // Fetch registration data and then claimed data
+                try {
+                    const response = await fetch('https://chayannito26.com/verify/registrants.json');
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    registrationData = await response.json();
+
+                    // Fetch claimed data from Firestore
+                    firestore.collection('claimedParts').get().then((querySnapshot) => {
+                        claimedData = {};
+                        querySnapshot.forEach((doc) => {
+                            claimedData[doc.id] = doc.data().parts || [];
+                        });
+                        // If attendee info is currently displayed, refresh it
+                        const displayedAttendeeId = document.querySelector('.claim-checkbox')?.dataset.attendeeId;
+                        if (displayedAttendeeId) {
+                            const attendee = registrationData.find(a => a.registration_id === displayedAttendeeId);
+                            if (attendee) {
+                                displayAttendeeInfo(attendee);
+                            }
+                        }
+                    });
+
+                    // Listen for changes in claimed parts
+                    firestore.collection('claimedParts').onSnapshot((snapshot) => {
+                        snapshot.docChanges().forEach((change) => {
+                            if (change.type === 'added' || change.type === 'modified') {
+                                claimedData[change.doc.id] = change.doc.data().parts || [];
+                            } else if (change.type === 'removed') {
+                                delete claimedData[change.doc.id];
+                            }
+                        });
+                        // If attendee info is currently displayed, refresh it
+                        const displayedAttendeeId = document.querySelector('.claim-checkbox')?.dataset.attendeeId;
+                        if (displayedAttendeeId) {
+                            const attendee = registrationData.find(a => a.registration_id === displayedAttendeeId);
+                            if (attendee) {
+                                displayAttendeeInfo(attendee);
+                            }
+                        }
+                    });
+
+                    enableAppFeatures();
+                } catch (error) {
+                    console.error('Failed to load registration data:', error);
+                    updateScanStatus('Error loading data. Please refresh.', 'fas fa-exclamation-triangle', 'bg-red-500');
+                }
             }
 
             init();
