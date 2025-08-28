@@ -306,8 +306,13 @@
             }
             
             function updateScanStatus(text, iconClass, bgClass) {
-                scanStatusElement.innerHTML = `<i class="${iconClass} mr-2"></i>${text}`;
-                scanStatusElement.className = `mt-4 text-center font-medium p-3 rounded-lg ${bgClass} text-white transition-all duration-300`;
+                if (text === 'Ready to scan') {
+                    scanStatusElement.classList.add('hidden');
+                } else {
+                    scanStatusElement.innerHTML = `<i class="${iconClass} mr-2"></i>${text}`;
+                    scanStatusElement.className = `mt-4 text-center font-medium p-3 rounded-lg ${bgClass} text-white transition-all duration-300`;
+                    scanStatusElement.classList.remove('hidden');
+                }
             }
 
             function displayAttendeeInfo(attendee) {
