@@ -683,7 +683,7 @@
                     }
                 
                 startScanBtn.addEventListener('click', () => {
-                    startScanBtn.classList.add('hidden');
+                    startScanBtn.remove(); // Remove button from DOM
                     qrReaderContainer.classList.remove('hidden');
                     updateScanStatus('Ready to scan', 'fas fa-qrcode', 'bg-blue-500');
                     // persist that scanner UI is open
@@ -767,7 +767,7 @@
                 try {
                     const wasOpen = localStorage.getItem(SCANNER_OPEN_KEY) === '1';
                     if (wasOpen) {
-                        startScanBtn.classList.add('hidden');
+                        startScanBtn.remove(); // Remove button from DOM when restoring
                         qrReaderContainer.classList.remove('hidden');
                         updateScanStatus('Ready to scan', 'fas fa-qrcode', 'bg-blue-500');
                         startScanner();
