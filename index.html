@@ -27,6 +27,21 @@
             border: 2px dashed #cbd5e1;
             border-radius: 0.5rem;
             overflow: hidden;
+            position: relative;
+            width: 100%;
+            min-height: 220px;
+            display: flex;
+            align-items: stretch;
+            justify-content: stretch;
+        }
+        #qr-reader video, #qr-reader canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 0.5rem;
         }
         /* Style for the scan region line */
         #html5-qrcode-anchor-scan-type-change {
@@ -61,6 +76,9 @@
             align-items: center;
             justify-content: center;
         }
+    /* compact attendee parts list */
+    .attendee-parts { display: flex; flex-wrap: wrap; gap: 6px; }
+    .attendee-parts .part-item { background: #fff; border: 1px solid #e6edf3; padding: 6px 8px; border-radius: 999px; display:flex; align-items:center; gap:6px; font-size:12px; }
         .claimed-label:hover .checkbox-ui {
             background-color: #cbd5e1; /* slate-300 */
         }
@@ -121,36 +139,38 @@
             <p class="text-slate-600 mt-1">Scan QR codes and manage attendees.</p>
         </header>
 
-        <!-- QR Scanner and Status Section -->
-        <section id="scanner-section" class="bg-white p-4 rounded-lg shadow-sm">
-            <h2 class="text-lg font-semibold mb-3 border-b pb-2">QR Code Scanner</h2>
-            <!-- This button will now trigger the scanner -->
-            <button id="start-scan-btn" class="hidden w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg transition duration-300">
+        <!-- QR Scanner and Attendee Section (combined for compact UI) -->
+        <section id="scanner-section" class="bg-white p-3 rounded-lg shadow-sm">
+            <h2 class="text-lg font-semibold mb-3 border-b pb-2">Scanner & Attendee</h2>
+            <!-- start button remains available for users who prefer it -->
+            <button id="start-scan-btn" class="hidden w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded-lg transition duration-300">
                 <i class="fas fa-camera mr-2"></i>Start Scanning
             </button>
-            <!-- The QR reader and status are now hidden until the button is clicked -->
-            <div id="qr-reader-container" class="hidden mt-4">
-                <div class="flex items-center justify-between mb-2">
-                    <div class="flex-1 mr-3">
-                        <label id="camera-selector-label" for="camera-selector" class="block text-sm font-medium text-slate-700 mb-1 hidden">Select Camera</label>
-                        <select id="camera-selector" class="w-full p-2 border border-slate-300 rounded-lg hidden"></select>
-                    </div>
-                    <div>
-                        <button id="switch-camera-btn" class="hidden bg-slate-200 hover:bg-slate-300 text-slate-700 py-2 px-3 rounded-lg">Switch</button>
-                    </div>
-                </div>
-                <div id="qr-reader" class="w-full mx-auto"></div>
-                <div id="scan-status" class="mt-4 text-center font-medium p-3 rounded-lg bg-slate-100 text-slate-700">
-                    <i class="fas fa-spinner fa-spin mr-2"></i>Loading registration data...
-                </div>
-            </div>
-        </section>
 
-        <!-- Attendee Information Section -->
-        <section id="attendee-info-section" class="hidden bg-white p-4 rounded-lg shadow-sm">
-            <h2 class="text-lg font-semibold mb-3 border-b pb-2">Scanned Attendee</h2>
-            <div id="attendee-details">
-                <!-- Attendee info will be populated here -->
+            <!-- Container becomes responsive two-column: left=reader, right=attendee -->
+            <div id="qr-reader-container" class="hidden mt-2 grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
+                <div class="flex flex-col gap-2">
+                    <div class="flex items-center justify-between mb-1">
+                        <div class="flex-1 mr-2">
+                            <label id="camera-selector-label" for="camera-selector" class="block text-sm font-medium text-slate-700 mb-1 hidden">Select Camera</label>
+                            <select id="camera-selector" class="w-full p-2 border border-slate-300 rounded-lg hidden"></select>
+                        </div>
+                        <div>
+                            <button id="switch-camera-btn" class="hidden bg-slate-200 hover:bg-slate-300 text-slate-700 py-1 px-2 rounded-lg">Switch</button>
+                        </div>
+                    </div>
+                    <div id="qr-reader" class="w-full mx-auto border border-dashed border-slate-200 rounded-md overflow-hidden" style="min-height:220px;">
+                    </div>
+                    <div id="scan-status" class="mt-2 text-center text-sm font-medium p-2 rounded-lg bg-slate-100 text-slate-700">
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Loading registration data...
+                    </div>
+                </div>
+
+                <!-- Attendee Information (moved into scanner card to keep UI in one frame) -->
+                <div id="attendee-info-section" class="hidden bg-slate-50 p-2 rounded-md">
+                    <div class="text-sm text-slate-600 mb-2">Scanned Attendee</div>
+                    <div id="attendee-details" class="space-y-2 text-sm"></div>
+                </div>
             </div>
         </section>
 
@@ -314,17 +334,10 @@
             function displayAttendeeInfo(attendee) {
                 attendeeInfoSection.classList.remove('hidden');
                 const attendeeClaimedParts = claimedData[attendee.registration_id] || [];
+                // render parts as compact chips with checkboxes on the left for space efficiency
                 let partsHtml = attendee.parts_available.map(part => {
                     const isClaimed = attendeeClaimedParts.includes(part);
-                    return `
-                        <div class="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                            <span class="font-medium">${part}</span>
-                            <label class="claimed-label">
-                                <input type="checkbox" class="claim-checkbox" data-attendee-id="${attendee.registration_id}" data-part="${part}" ${isClaimed ? 'checked' : ''}>
-                                <span class="checkbox-ui"></span>
-                            </label>
-                        </div>
-                    `;
+                    return `<label class="part-item" style="user-select:none;"><input type=\"checkbox\" class=\"claim-checkbox\" data-attendee-id=\"${attendee.registration_id}\" data-part=\"${part}\" ${isClaimed ? 'checked' : ''} style=\"margin:0;\"><span>${part}</span></label>`;
                 }).join('');
 
                 // Robust referred_by resolution
@@ -347,17 +360,19 @@
                 }
 
                 attendeeDetailsElement.innerHTML = `
-                    <div class="space-y-3">
-                        <p class="text-xl font-bold">${attendee.name}</p>
-                        <p class="text-sm text-slate-500">ID: ${attendee.registration_id}</p>
-                        <div class="grid grid-cols-2 gap-2 text-sm text-slate-700">
-                            <div><span class="font-semibold">Roll:</span> ${attendee.roll}</div>
-                            <div><span class="font-semibold">Reg. Date:</span> ${attendee.registration_date}</div>
-                            <div><span class="font-semibold">Paid:</span> <span class="text-green-700 font-bold">${attendee.paid}</span></div>
-                            <div><span class="font-semibold">Referred By:</span> ${refName}</div>
-                                ${attendee.revoked ? `<div class='col-span-2 flex items-center gap-2 p-2 bg-red-100 border border-red-400 rounded'><i class='fas fa-ban text-red-600'></i><span class='text-red-700 font-bold'>Registration Revoked</span></div>` : ''}
+                    <div>
+                        <div class="attendee-parts">${partsHtml}</div>
+                        <div class="mt-2">
+                            <p class="text-lg font-semibold truncate">${attendee.name}</p>
+                            <p class="text-xs text-slate-500">ID: ${attendee.registration_id}</p>
                         </div>
-                        <div class="space-y-2 mt-2">${partsHtml}</div>
+                        <div class="grid grid-cols-2 gap-2 text-xs text-slate-700 mt-2">
+                            <div><span class="font-semibold">Roll:</span> ${attendee.roll}</div>
+                            <div><span class="font-semibold">Reg:</span> ${attendee.registration_date}</div>
+                            <div><span class="font-semibold">Paid:</span> <span class="text-green-700 font-bold">${attendee.paid}</span></div>
+                            <div><span class="font-semibold">Ref:</span> ${refName}</div>
+                        </div>
+                        ${attendee.revoked ? `<div class='mt-2 flex items-center gap-2 p-2 bg-red-100 border border-red-400 rounded text-xs'><i class='fas fa-ban text-red-600'></i><span class='text-red-700 font-bold'>Revoked</span></div>` : ''}
                     </div>
                 `;
                 document.querySelectorAll('.claim-checkbox').forEach(checkbox => {
@@ -391,11 +406,11 @@
                     const claimedCount = attendeeClaimedParts.length;
                     const totalCount = (logData.parts_available || []).length;
                     logItem.classList.add('bg-green-50', 'border-green-200');
-                    logItem.innerHTML = `<p class="font-semibold">${logData.name}</p><p class="text-sm text-slate-600">Status: Claimed ${claimedCount}/${totalCount} parts. <span class="text-xs text-slate-400 float-right">${timeString}</span></p>`;
+                    logItem.innerHTML = `<div class=\"flex items-center justify-between\"><p class=\"font-semibold\">${logData.name}</p><span class=\"text-xs text-slate-400\">${timeString}</span></div><p class=\"text-xs text-slate-600\">Claimed ${claimedCount}/${totalCount}</p>`;
                 } else {
-                    let statusText = logData.reason === 'Invalid' ? 'Invalid QR Code' : 'Not Registered';
+                    let statusText = logData.reason === 'Invalid' ? 'Invalid QR' : 'Not Found';
                     logItem.classList.add('bg-red-50', 'border-red-200');
-                    logItem.innerHTML = `<p class="font-semibold">Scanned: ${logData.id}</p><p class="text-sm text-slate-600">Status: ${statusText} <span class="text-xs text-slate-400 float-right">${timeString}</span></p>`;
+                    logItem.innerHTML = `<div class=\"flex items-center justify-between\"><p class=\"font-semibold\">Scanned: ${logData.id}</p><span class=\"text-xs text-slate-400\">${timeString}</span></div><p class=\"text-xs text-slate-600\">${statusText}</p>`;
                 }
                 scanLogElement.prepend(logItem);
 
@@ -677,12 +692,12 @@
 
                 const attendee = registrationData.find(a => a.registration_id === attendeeId);
                 if (attendee) {
-                    updateScanStatus(`Success! Found: ${attendee.name}`, 'fas fa-check-circle', 'bg-green-500');
+                    updateScanStatus(`Found: ${attendee.name}`, 'fas fa-check-circle', 'bg-green-500');
                     displayAttendeeInfo(attendee);
                     addToScanLog(attendee, true);
                     doVibrate(VIB_PATTERNS.success);
                 } else {
-                    updateScanStatus(`ID Not Found: ${attendeeId}`, 'fas fa-times-circle', 'bg-red-500');
+                    updateScanStatus(`Not found: ${attendeeId}`, 'fas fa-times-circle', 'bg-red-500');
                     attendeeInfoSection.classList.add('hidden');
                     addToScanLog({ id: attendeeId, reason: 'Not Found' }, false);
                     doVibrate(VIB_PATTERNS.notFound);
