@@ -327,11 +327,38 @@
                     `;
                 }).join('');
 
+                // Robust referred_by resolution
+                let refName = '';
+                if (attendee.referred_by) {
+                    let ref = registrationData.find(r => r.registration_id === attendee.referred_by);
+                    if (!ref && attendee.referred_by.length > 0) {
+                        ref = registrationData.find(r => r.roll === attendee.referred_by);
+                    }
+                    if (!ref && attendee.referred_by.length > 0) {
+                        ref = registrationData.find(r => r.name.toLowerCase() === attendee.referred_by.toLowerCase());
+                    }
+                    if (ref) {
+                        refName = ref.name + ` <span class='text-xs text-slate-400'>(ID: ${ref.registration_id})</span>`;
+                    } else {
+                        refName = `<span class='text-slate-400'>${attendee.referred_by} (unresolved)</span>`;
+                    }
+                } else {
+                    refName = '<span class="text-slate-400">None</span>';
+                }
+
                 attendeeDetailsElement.innerHTML = `
                     <div class="space-y-3">
                         <p class="text-xl font-bold">${attendee.name}</p>
                         <p class="text-sm text-slate-500">ID: ${attendee.registration_id}</p>
-                        <div class="space-y-2">${partsHtml}</div>
+                        <div class="grid grid-cols-2 gap-2 text-sm text-slate-700">
+                            <div><span class="font-semibold">Roll:</span> ${attendee.roll}</div>
+                            <div><span class="font-semibold">Gender:</span> ${attendee.gender}</div>
+                            <div><span class="font-semibold">Reg. Date:</span> ${attendee.registration_date}</div>
+                            <div><span class="font-semibold">Paid:</span> <span class="text-green-700 font-bold">${attendee.paid}</span></div>
+                            <div><span class="font-semibold">Referred By:</span> ${refName}</div>
+                            <div><span class="font-semibold">Revoked:</span> ${attendee.revoked ? '<span class=\'text-red-600 font-bold\'>Yes</span>' : '<span class=\'text-green-600 font-bold\'>No</span>'}</div>
+                        </div>
+                        <div class="space-y-2 mt-2">${partsHtml}</div>
                     </div>
                 `;
                 document.querySelectorAll('.claim-checkbox').forEach(checkbox => {
