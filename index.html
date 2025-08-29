@@ -360,6 +360,9 @@
                 }
 
                 attendeeDetailsElement.innerHTML = `
+                        <div class="flex items-center gap-3 mb-2">
+                            <img src="${attendee.photo && attendee.photo.trim() ? attendee.photo : `https://chayannito26.com/college-students/images/${attendee.roll || 'placeholder'}.jpg`}" alt="Attendee Photo" class="w-16 h-16 object-cover rounded-full border border-slate-200 bg-slate-100" onerror="this.onerror=null;this.src='https://chayannito26.com/college-students/images/placeholder.jpg';">
+                        </div>
                     <div>
                         <div class="attendee-parts">${partsHtml}</div>
                         <div class="mt-2">
