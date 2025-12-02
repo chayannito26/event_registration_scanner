@@ -334,6 +334,8 @@
             function displayAttendeeInfo(attendee) {
                 attendeeInfoSection.classList.remove('hidden');
                 const attendeeClaimedParts = claimedData[attendee.registration_id] || [];
+                // Resolve common T-shirt size property names robustly
+                const tshirtSize = attendee.tshirt_size || attendee.tshirt || attendee.size || attendee.t_shirt || attendee['T-shirt'] || attendee['t-shirt'] || 'N/A';
                 // render parts as compact chips with checkboxes on the left for space efficiency
                 let partsHtml = attendee.parts_available.map(part => {
                     const isClaimed = attendeeClaimedParts.includes(part);
@@ -372,8 +374,9 @@
                         <div class="grid grid-cols-2 gap-2 text-xs text-slate-700 mt-2">
                             <div><span class="font-semibold">Roll:</span> ${attendee.roll}</div>
                             <div><span class="font-semibold">Reg:</span> ${attendee.registration_date}</div>
-                            <div><span class="font-semibold">Paid:</span> <span class="text-green-700 font-bold">${attendee.paid}</span></div>
-                            <div><span class="font-semibold">Ref:</span> ${refName}</div>
+                            <div><span class="font-semibold">T-Shirt:</span> <span class="font-bold bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">${tshirtSize}</span></div>
+                            <div><span class="font-semibold">Paid:</span> <span class="font-bold bg-yellow-100 text-green-800 px-2 py-0.5 rounded">${attendee.paid}</span></div>
+                            <div class="col-span-2"><span class="font-semibold">Ref:</span> ${refName}</div>
                         </div>
                         ${attendee.revoked ? `<div class='mt-2 flex items-center gap-2 p-2 bg-red-100 border border-red-400 rounded text-xs'><i class='fas fa-ban text-red-600'></i><span class='text-red-700 font-bold'>Revoked</span></div>` : ''}
                     </div>
